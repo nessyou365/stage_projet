@@ -1,5 +1,5 @@
 # stage_projet
-# 🚀 AI Recruitment System (Web & Mobile)
+# 🚀 Intelligent Recruitment System (Web & Mobile)
 
 ## 📌 Description
 

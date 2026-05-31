@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isHr() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'hr';
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isHr());
+      allow create, update: if isSignedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.role in ['hr', 'candidate'] &&
+        request.resource.data.email is string &&
+        request.resource.data.name is string;
+      allow create, update, delete: if isHr();
+    }
+
+    match /candidates/{userId} {
+      allow read: if isHr() || (isSignedIn() && request.auth.uid == userId);
+      allow create, update: if isSignedIn() && request.auth.uid == userId
+        && request.resource.data.role == 'candidate'
+        && request.resource.data.email is string
+        && request.resource.data.name is string;
+    }
+
+    match /jobs/{jobId} {
+      allow read: if true;
+      allow create, update, delete: if isHr();
+    }
+
+    match /applications/{appId} {
+      function ownsApplication() {
+        return isSignedIn() && resource.data.userId == request.auth.uid;
+      }
+
+      function onlyInterviewAnswerFieldsChanged() {
+        return request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'interviewAnswers',
+          'interviewStatus',
+          'interviewSubmittedAt',
+          'updatedAt'
+        ]);
+      }
+
+      function onlyCandidatePhotoFieldsChanged() {
+        return request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'candidatePhotoUrl',
+          'updatedAt'
+        ]);
+      }
+
+      allow create: if
+        request.resource.data.jobId is string &&
+        request.resource.data.jobTitle is string &&
+        request.resource.data.userId is string &&
+        request.resource.data.candidateName is string &&
+        request.resource.data.candidateEmail is string &&
+        request.resource.data.cvUrl is string;
+
+      allow read: if true;
+      allow update: if isHr()
+        || (
+          ownsApplication() &&
+          resource.data.status == 'Interview' &&
+          request.resource.data.interviewStatus == 'submitted' &&
+          onlyInterviewAnswerFieldsChanged()
+        )
+        || (
+          resource.data.status == 'Interview' &&
+          request.resource.data.interviewStatus == 'submitted' &&
+          onlyInterviewAnswerFieldsChanged()
+        )
+        || (
+          request.resource.data.userId == resource.data.userId &&
+          onlyCandidatePhotoFieldsChanged()
+        );
+    }
+
+    match /spontaneous/{appId} {
+      allow create: if
+        request.resource.data.userId is string &&
+        request.resource.data.email is string &&
+        request.resource.data.cvUrl is string;
+
+      allow read, update: if isHr();
+    }
+
+    match /notifications/hr/items/{notifId} {
+      allow create: if true;
+      allow read, update: if isHr();
+    }
+
+    match /notifications/{userId}/items/{notifId} {
+      allow create: if true;
+      allow read, update: if true;
+    }
+  }
+}

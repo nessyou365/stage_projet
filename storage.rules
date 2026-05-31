@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isHr() {
+      return isSignedIn() &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'hr';
+    }
+
+    match /cvs/{candidateId}/{fileName} {
+      allow write: if request.resource != null &&
+        request.resource.contentType == 'application/pdf';
+      allow read: if isHr();
+    }
+
+    match /spontaneous/{candidateId}/{fileName} {
+      allow write: if request.resource != null &&
+        request.resource.contentType == 'application/pdf';
+      allow read: if isHr();
+    }
+  }
+}
